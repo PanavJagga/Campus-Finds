@@ -1,0 +1,173 @@
+"use client";
+import type { FoundItem } from "@/lib/types";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import Image from "next/image";
+import { Badge } from "@/components/ui/badge";
+import { MapPin, CalendarDays, Phone, ShieldAlert, CheckCircle, Tag } from "lucide-react";
+import { formatDistanceToNow } from 'date-fns';
+import { markItemAsResolved, reportItemAction } from "@/lib/actions";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useState } from "react";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+
+
+interface FoundItemCardProps {
+  item: FoundItem;
+}
+
+export function FoundItemCard({ item }: FoundItemCardProps) {
+  const { toast } = useToast();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+
+  const handleClaim = async () => {
+    setIsProcessing(true);
+    try {
+      const result = await markItemAsResolved("foundItems", item.id);
+      if (result.success) {
+        toast({ title: "Item Claimed", description: "This item has been marked as claimed." });
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+      }
+    } catch (error) {
+       toast({ title: "Error", description: "An unexpected error occurred while claiming.", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  const handleReport = async () => {
+    if(!reportReason.trim()) {
+      toast({ title: "Error", description: "Please provide a reason for reporting.", variant: "destructive" });
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      const result = await reportItemAction("foundItems", item.id, reportReason);
+      if (result.success) {
+        toast({ title: "Item Reported", description: "Thank you for your feedback." });
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Error", description: "An unexpected error occurred while reporting.", variant: "destructive" });
+    } finally {
+      setIsProcessing(false);
+      setReportReason(""); 
+    }
+  };
+
+  const createdAtDate = item.createdAt?.toDate ? item.createdAt.toDate() : new Date();
+
+  return (
+    <Card className="flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 h-full">
+      {item.imageUrl && (
+        <div className="relative w-full h-48">
+          <Image
+            src={item.imageUrl}
+            alt={item.description.substring(0,50)}
+            fill // Changed from layout="fill" to fill for Next 13+
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" // Example sizes, adjust as needed
+            style={{ objectFit: "cover" }} // Changed from objectFit="cover"
+            data-ai-hint="found item"
+          />
+          {item.resolved && (
+             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                <span className="text-white text-xl font-bold bg-green-500 px-3 py-1 rounded">CLAIMED</span>
+            </div>
+          )}
+        </div>
+      )}
+      {!item.imageUrl && (
+         <div className="relative w-full h-48 bg-muted flex items-center justify-center">
+           <MapPin className="w-16 h-16 text-muted-foreground" />
+            {item.resolved && (
+             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                <span className="text-white text-xl font-bold bg-green-500 px-3 py-1 rounded">CLAIMED</span>
+            </div>
+          )}
+         </div>
+      )}
+      <CardHeader>
+        <CardTitle className="truncate text-lg">{item.description.substring(0, 60)}{item.description.length > 60 ? '...' : ''}</CardTitle>
+        <CardDescription className="text-xs text-muted-foreground flex items-center gap-1">
+          <CalendarDays className="h-3 w-3" /> Posted {formatDistanceToNow(createdAtDate, { addSuffix: true })}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex-grow space-y-2 text-sm">
+        <div className="flex items-start gap-2 text-muted-foreground">
+          <MapPin className="h-4 w-4 mt-0.5 shrink-0" /> 
+          <span>Found at: {item.locationFound}</span>
+        </div>
+        <div className="flex items-start gap-2 text-muted-foreground">
+          <Phone className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>Contact: {item.contactInfo}</span>
+        </div>
+        {item.tags && item.tags.length > 0 && (
+          <div className="pt-2">
+            {item.tags.slice(0,3).map((tag) => (
+              <Badge key={tag} variant="secondary" className="mr-1 mb-1">
+                <Tag className="h-3 w-3 mr-1"/>{tag}
+              </Badge>
+            ))}
+             {item.tags.length > 3 && <Badge variant="outline">+{item.tags.length - 3} more</Badge>}
+          </div>
+        )}
+      </CardContent>
+      <CardFooter className="flex flex-col sm:flex-row gap-2 pt-4 border-t">
+        {!item.resolved ? (
+          <Button onClick={handleClaim} disabled={isProcessing} className="w-full sm:w-auto flex-1 bg-green-600 hover:bg-green-700 text-white">
+            <CheckCircle className="mr-2 h-4 w-4" /> Claim Item
+          </Button>
+        ) : (
+          <Button disabled className="w-full sm:w-auto flex-1">Claimed</Button>
+        )}
+        
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" disabled={isProcessing || item.reported} className="w-full sm:w-auto flex-1">
+              <ShieldAlert className="mr-2 h-4 w-4" /> {item.reported ? 'Reported' : 'Report Post'}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Report this post?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Please provide a reason for reporting this item. This helps us maintain a safe and relevant platform.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="grid gap-2">
+                <Label htmlFor="reportReason">Reason for reporting</Label>
+                <Input 
+                  id="reportReason" 
+                  placeholder="e.g., Inappropriate content, spam, false information" 
+                  value={reportReason}
+                  onChange={(e) => setReportReason(e.target.value)}
+                />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setReportReason("")}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleReport} disabled={isProcessing || !reportReason.trim()}>
+                {isProcessing ? "Reporting..." : "Submit Report"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+      </CardFooter>
+    </Card>
+  );
+}
